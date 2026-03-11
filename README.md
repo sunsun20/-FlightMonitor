@@ -85,6 +85,21 @@ venv/bin/python app.py
 
 > 航班数据通常在起飞前 1-2 天进入系统，太早查询会显示"未找到数据"，属正常现象。
 
+### Telegram Bot 使用
+
+直接在 Telegram 给 Bot 发消息：
+
+| 发送内容 | 效果 |
+|----------|------|
+| `EK306` | 查询今天的 EK306 |
+| `EK306 2026-03-13` | 查询指定日期 |
+| 发截图（机票/订单） | 自动 OCR 识别航班号和日期，确认后查询 |
+
+截图识别流程：
+1. 发送机票截图给 Bot
+2. Bot 识别后回复：「识别到：✈️ EK306 📅 2026-03-13，发送「确认」查询，或「取消」」
+3. 发「确认」即可查询
+
 ---
 
 ## 配置说明
@@ -97,6 +112,7 @@ venv/bin/python app.py
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token（从 @BotFather 获取） |
 | `TELEGRAM_CHAT_ID` | 你的 Telegram 用户 ID |
 | `CHECK_INTERVAL_MINUTES` | 监控检查间隔，默认 10 分钟 |
+| `DEEPSEEK_API_KEY` | DeepSeek API Key（截图识别用，deepseek.com 注册） |
 
 ---
 
@@ -130,5 +146,7 @@ A：确认 iPhone 上 Tailscale 已开启并登录同一账号。
 
 - [x] 部署到 Azure VM，实现 7×24 小时监控
 - [x] Tailscale 内网访问，无需公网 IP
+- [x] Telegram Bot 文字查询（EK306 或 EK306 2026-03-13）
+- [x] 截图识别（OCR + DeepSeek AI 解析航班信息）
 - [ ] 支持同时监控多个航班
 - [ ] 增加历史记录功能

@@ -151,8 +151,18 @@ def format_flight_msg(result):
 
 
 def extract_flight_from_image(image_bytes):
-    """用 DeepSeek Vision 识别截图中的航班号和日期"""
-    b64 = base64.b64encode(image_bytes).decode()
+    """OCR 提取图片文字，再用 DeepSeek 解析航班号和日期"""
+    import json, re
+    from PIL import Image
+    import pytesseract
+    import io
+
+    # 本地 OCR 提取文字
+    img = Image.open(io.BytesIO(image_bytes))
+    text = pytesseract.image_to_string(img, lang="chi_sim+eng")
+    print(f"[OCR] 提取文字：{text[:200]}")
+
+    # 用 DeepSeek 文字模型解析
     resp = requests.post(
         "https://api.deepseek.com/v1/chat/completions",
         headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"},
@@ -160,21 +170,18 @@ def extract_flight_from_image(image_bytes):
             "model": "deepseek-chat",
             "messages": [{
                 "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                    {"type": "text", "text": (
-                        "这是一张机票订单或航班信息截图。"
-                        "请提取航班号和出发日期，只返回 JSON 格式，例如：{\"flight\": \"EK306\", \"date\": \"2026-03-13\"}"
-                        "如果有多个航班，返回第一个。如果识别不到，返回 {\"flight\": null, \"date\": null}"
-                    )}
-                ]
+                "content": (
+                    f"以下是从机票订单截图中 OCR 提取的文字：\n\n{text}\n\n"
+                    "请从中提取航班号和出发日期，只返回 JSON，格式如：{\"flight\": \"EK306\", \"date\": \"2026-03-13\"}\n"
+                    "日期格式必须是 YYYY-MM-DD。如果识别不到，返回 {\"flight\": null, \"date\": null}"
+                )
             }],
             "max_tokens": 100
         },
         timeout=30
     )
-    import json, re
-    content = resp.json()["choices"][0]["message"]["content"]
+    data = resp.json()
+    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
     match = re.search(r'\{.*?\}', content, re.DOTALL)
     if match:
         return json.loads(match.group())
@@ -331,4 +338,4 @@ def api_monitored():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5002)
+    app.run(debug=True, host="0.0.0.0", port=5002)
