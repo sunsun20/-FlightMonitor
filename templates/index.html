@@ -4,80 +4,217 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>航班监控</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/nes.css@2.3.0/css/nes.min.css">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f0f4f8; min-height: 100vh; padding: 24px 16px; }
-    .card { background: white; border-radius: 16px; padding: 24px; max-width: 480px; margin: 0 auto 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    h1 { font-size: 22px; font-weight: 700; color: #1a1a2e; margin-bottom: 4px; }
-    .subtitle { color: #888; font-size: 14px; margin-bottom: 24px; }
-    label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; }
-    input { width: 100%; padding: 12px 14px; border: 1.5px solid #e0e0e0; border-radius: 10px; font-size: 16px; outline: none; transition: border 0.2s; }
-    input:focus { border-color: #4f8ef7; }
-    .btn-row { display: flex; gap: 10px; margin-top: 16px; }
-    button { flex: 1; padding: 13px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
-    button:active { opacity: 0.8; }
-    .btn-query { background: #4f8ef7; color: white; }
-    .btn-monitor { background: #00b894; color: white; }
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Press Start 2P', monospace;
+      background: #212529;
+      color: #fff;
+      padding: 24px 16px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 560px;
+      margin: 0 auto;
+    }
+
+    /* 标题区 */
+    .header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .header .plane {
+      font-size: 36px;
+      display: block;
+      margin-bottom: 12px;
+      animation: fly 2.5s ease-in-out infinite;
+    }
+    @keyframes fly {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+    .header h1 {
+      font-size: 18px;
+      color: #92cc41;
+      margin-bottom: 10px;
+    }
+    .header p {
+      font-size: 9px;
+      color: #888;
+      line-height: 2;
+    }
+
+    /* 覆盖 NES.css 为暗色 */
+    .nes-container {
+      background: #2d2d2d !important;
+      border-color: #92cc41 !important;
+      margin-bottom: 24px;
+      padding: 20px;
+    }
+    .nes-container.with-title > .title {
+      background: #2d2d2d !important;
+      color: #92cc41;
+      font-size: 11px;
+    }
+    .nes-input, .nes-input:focus {
+      background: #1a1a1a !important;
+      color: #fff !important;
+      font-size: 13px !important;
+      border-color: #555 !important;
+      width: 100%;
+    }
+    .nes-input:focus {
+      border-color: #92cc41 !important;
+    }
+
+    /* 字段 */
+    .field { margin-bottom: 18px; }
+    .field label {
+      display: block;
+      font-size: 10px;
+      color: #aaa;
+      margin-bottom: 8px;
+    }
+
+    /* 按钮行 */
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .btn-row .nes-btn {
+      flex: 1;
+      font-size: 10px;
+      padding: 12px 8px;
+    }
+
+    /* 结果 */
     .result { margin-top: 20px; }
-    .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; margin-bottom: 16px; }
-    .status-scheduled { background: #e3f2fd; color: #1565c0; }
-    .status-active { background: #e8f5e9; color: #2e7d32; }
-    .status-landed { background: #f3e5f5; color: #6a1b9a; }
-    .status-cancelled { background: #ffebee; color: #c62828; }
-    .status-diverted { background: #fff3e0; color: #e65100; }
-    .status-unknown { background: #f5f5f5; color: #757575; }
-    .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
-    .info-row:last-child { border-bottom: none; }
-    .info-label { color: #888; }
-    .info-value { font-weight: 600; color: #333; text-align: right; max-width: 60%; }
-    .delay { color: #e53935; }
-    .msg { padding: 14px; border-radius: 10px; font-size: 14px; text-align: center; margin-top: 16px; }
-    .msg-success { background: #e8f5e9; color: #2e7d32; }
-    .msg-error { background: #ffebee; color: #c62828; }
-    .monitored-list { margin-top: 8px; }
-    .monitored-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+
+    /* 状态标签 */
+    .nes-badge {
+      margin-bottom: 18px;
+      display: inline-block;
+    }
+    .nes-badge span {
+      font-size: 9px !important;
+    }
+
+    /* 信息表格 */
+    .info-table { width: 100%; border-collapse: collapse; }
+    .info-table tr { border-bottom: 2px dashed #444; }
+    .info-table tr.section-header td { color: #92cc41; font-size: 8px; padding: 12px 4px 6px; border-bottom: none; text-align: left !important; }
+    .info-table tr:last-child { border-bottom: none; }
+    .info-table td {
+      padding: 10px 4px;
+      font-size: 9px;
+      vertical-align: middle;
+    }
+    .info-table td:first-child { color: #888; width: 40%; }
+    .info-table td:last-child { color: #fff; text-align: right; word-break: break-word; }
+    .delay { color: #e76e55 !important; }
+
+    /* 消息 */
+    .msg {
+      padding: 14px;
+      font-size: 9px;
+      text-align: center;
+      line-height: 2.2;
+      border: 4px solid;
+    }
+    .msg-loading { border-color: #555; color: #888; }
+    .msg-success { border-color: #92cc41; color: #92cc41; background: #1a2a0a; }
+    .msg-error   { border-color: #e76e55; color: #e76e55; background: #2a0a0a; }
+
+    /* 监控列表 */
+    .monitored-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 2px dashed #444;
+      gap: 8px;
+    }
     .monitored-item:last-child { border-bottom: none; }
-    h2 { font-size: 16px; font-weight: 700; color: #333; margin-bottom: 12px; }
-    .empty { color: #aaa; font-size: 14px; text-align: center; padding: 12px 0; }
+    .monitored-item .flight-id { color: #92cc41; font-size: 11px; }
+    .monitored-item .flight-date { color: #666; font-size: 8px; }
+
+    .empty {
+      font-size: 9px;
+      color: #555;
+      text-align: center;
+      padding: 16px 0;
+      line-height: 2.5;
+    }
+
+    /* 状态颜色 */
+    .s-scheduled { color: #209cee; }
+    .s-active    { color: #92cc41; }
+    .s-landed    { color: #aa00ff; }
+    .s-cancelled { color: #e76e55; }
+    .s-diverted  { color: #f7d51d; }
+    .s-unknown   { color: #888; }
   </style>
 </head>
 <body>
+<div class="container">
 
-<div class="card">
-  <h1>✈️ 航班监控</h1>
-  <p class="subtitle">查询或监控航班状态，取消/延误时 Telegram 通知</p>
-
-  <div style="margin-bottom:14px">
-    <label>航班号</label>
-    <input id="flight_iata" type="text" placeholder="例如 EK306" />
-  </div>
-  <div>
-    <label>日期</label>
-    <input id="flight_date" type="date" />
+  <div class="header">
+    <span class="plane">✈</span>
+    <h1>FLIGHT MONITOR</h1>
+    <p>航班取消 / 延误时 Telegram 自动通知</p>
   </div>
 
-  <div class="btn-row">
-    <button class="btn-query" onclick="queryFlight()">查询状态</button>
-    <button class="btn-monitor" onclick="monitorFlight()">开始监控</button>
+  <div class="nes-container with-title">
+    <p class="title">查询航班</p>
+
+    <div class="field">
+      <label>航班号</label>
+      <input id="flight_iata" class="nes-input" type="text" placeholder="EK306">
+    </div>
+    <div class="field">
+      <label>日期</label>
+      <input id="flight_date" class="nes-input" type="date">
+    </div>
+
+    <div class="btn-row">
+      <button class="nes-btn is-primary" onclick="queryFlight()">▶ 查询</button>
+      <button class="nes-btn is-success" onclick="monitorFlight()">◉ 开始监控</button>
+    </div>
+
+    <div id="result" class="result"></div>
   </div>
 
-  <div id="result" class="result"></div>
-</div>
+  <div class="nes-container with-title">
+    <p class="title">监控中的航班</p>
+    <div id="monitored-list">
+      <p class="empty">暂无监控航班<br><br>输入航班号后点击监控</p>
+    </div>
+  </div>
 
-<div class="card" id="monitored-card">
-  <h2>📡 监控中的航班</h2>
-  <div id="monitored-list" class="monitored-list"><p class="empty">暂无监控航班</p></div>
 </div>
 
 <script>
 const STATUS_ZH = {
-  scheduled: "正常（计划中）",
-  active: "飞行中",
-  landed: "已降落",
-  cancelled: "已取消",
-  incident: "出现事故",
-  diverted: "改飞其他机场",
-  unknown: "未知",
+  scheduled: "计划中",
+  active:    "飞行中",
+  landed:    "已降落",
+  cancelled: "已取消 ✗",
+  incident:  "出现事故",
+  diverted:  "改飞其他",
+  unknown:   "未知",
+};
+const STATUS_CLASS = {
+  scheduled: "s-scheduled",
+  active:    "s-active",
+  landed:    "s-landed",
+  cancelled: "s-cancelled",
+  diverted:  "s-diverted",
+  unknown:   "s-unknown",
 };
 
 function formatTime(iso) {
@@ -90,30 +227,42 @@ async function queryFlight() {
   const flight_date = document.getElementById("flight_date").value.trim();
   const el = document.getElementById("result");
   if (!flight_iata || !flight_date) {
-    el.innerHTML = '<div class="msg msg-error">请填写航班号和日期</div>';
+    el.innerHTML = '<div class="msg msg-error">! 请填写航班号和日期</div>';
     return;
   }
-  el.innerHTML = '<div class="msg" style="background:#f5f5f5;color:#888">查询中...</div>';
+  el.innerHTML = '<div class="msg msg-loading">查询中...</div>';
   const resp = await fetch("/api/query", {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({ flight_iata, flight_date })
   });
   const data = await resp.json();
   if (data.error) {
-    el.innerHTML = `<div class="msg msg-error">${data.error}</div>`;
+    el.innerHTML = `<div class="msg msg-error">! ${data.error}</div>`;
     return;
   }
-  const statusClass = `status-${data.status || "unknown"}`;
   const zh = STATUS_ZH[data.status] || data.status;
+  const sc = STATUS_CLASS[data.status] || "s-unknown";
   el.innerHTML = `
-    <span class="status-badge ${statusClass}">${zh}</span>
-    <div class="info-row"><span class="info-label">航班</span><span class="info-value">${data.flight_iata}</span></div>
-    <div class="info-row"><span class="info-label">航空公司</span><span class="info-value">${data.airline || "-"}</span></div>
-    <div class="info-row"><span class="info-label">出发机场</span><span class="info-value">${data.departure_airport || "-"}</span></div>
-    <div class="info-row"><span class="info-label">计划起飞</span><span class="info-value">${formatTime(data.departure_scheduled)}</span></div>
-    ${data.departure_delay ? `<div class="info-row"><span class="info-label">延误</span><span class="info-value delay">${data.departure_delay} 分钟</span></div>` : ""}
-    <div class="info-row"><span class="info-label">到达机场</span><span class="info-value">${data.arrival_airport || "-"}</span></div>
-    <div class="info-row"><span class="info-label">计划到达</span><span class="info-value">${formatTime(data.arrival_scheduled)}</span></div>
+    <p style="font-size:13px;margin-bottom:16px" class="${sc}">◆ ${zh}</p>
+    <table class="info-table">
+      <tr><td>航班</td><td>${data.flight_iata}</td></tr>
+      <tr><td>航空公司</td><td>${data.airline || "-"}</td></tr>
+      <tr class="section-header"><td colspan="2">── 出发 ──</td></tr>
+      <tr><td>机场</td><td>${data.departure_airport || "-"} (${data.departure_iata || "-"})</td></tr>
+      <tr><td>航站楼</td><td>${data.departure_terminal ? "T" + data.departure_terminal : "-"}</td></tr>
+      <tr><td>登机口</td><td>${data.departure_gate || "待定"}</td></tr>
+      <tr><td>计划起飞</td><td>${formatTime(data.departure_scheduled)}</td></tr>
+      ${data.departure_estimated && data.departure_estimated !== data.departure_scheduled ? `<tr><td>预计起飞</td><td>${formatTime(data.departure_estimated)}</td></tr>` : ""}
+      ${data.departure_actual ? `<tr><td>实际起飞</td><td>${formatTime(data.departure_actual)}</td></tr>` : ""}
+      ${data.departure_delay ? `<tr><td>延误</td><td class="delay">▲ ${data.departure_delay} 分钟</td></tr>` : ""}
+      <tr class="section-header"><td colspan="2">── 到达 ──</td></tr>
+      <tr><td>机场</td><td>${data.arrival_airport || "-"} (${data.arrival_iata || "-"})</td></tr>
+      <tr><td>航站楼</td><td>${data.arrival_terminal ? "T" + data.arrival_terminal : "-"}</td></tr>
+      <tr><td>登机口</td><td>${data.arrival_gate || "待定"}</td></tr>
+      <tr><td>计划到达</td><td>${formatTime(data.arrival_scheduled)}</td></tr>
+      ${data.arrival_estimated ? `<tr><td>预计到达</td><td>${formatTime(data.arrival_estimated)}</td></tr>` : ""}
+      ${data.arrival_baggage ? `<tr><td>行李转盘</td><td>${data.arrival_baggage}</td></tr>` : ""}
+    </table>
   `;
 }
 
@@ -122,19 +271,19 @@ async function monitorFlight() {
   const flight_date = document.getElementById("flight_date").value.trim();
   const el = document.getElementById("result");
   if (!flight_iata || !flight_date) {
-    el.innerHTML = '<div class="msg msg-error">请填写航班号和日期</div>';
+    el.innerHTML = '<div class="msg msg-error">! 请填写航班号和日期</div>';
     return;
   }
-  el.innerHTML = '<div class="msg" style="background:#f5f5f5;color:#888">设置监控中...</div>';
+  el.innerHTML = '<div class="msg msg-loading">设置监控中...</div>';
   const resp = await fetch("/api/monitor", {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({ flight_iata, flight_date })
   });
   const data = await resp.json();
   if (data.error) {
-    el.innerHTML = `<div class="msg msg-error">${data.error}</div>`;
+    el.innerHTML = `<div class="msg msg-error">! ${data.error}</div>`;
   } else {
-    el.innerHTML = `<div class="msg msg-success">${data.message}</div>`;
+    el.innerHTML = `<div class="msg msg-success">✓ 监控已启动<br>状态变化时 Telegram 通知你</div>`;
     loadMonitored();
   }
 }
@@ -145,21 +294,21 @@ async function loadMonitored() {
   const el = document.getElementById("monitored-list");
   const keys = Object.keys(data);
   if (keys.length === 0) {
-    el.innerHTML = '<p class="empty">暂无监控航班</p>';
+    el.innerHTML = '<p class="empty">暂无监控航班<br><br>输入航班号后点击监控</p>';
     return;
   }
   el.innerHTML = keys.map(key => {
     const [iata, date] = key.split("_");
     const zh = STATUS_ZH[data[key]] || data[key];
-    const statusClass = `status-${data[key] || "unknown"}`;
+    const sc = STATUS_CLASS[data[key]] || "s-unknown";
     return `<div class="monitored-item">
-      <span><b>${iata}</b> &nbsp;${date}</span>
-      <span class="status-badge ${statusClass}" style="font-size:12px">${zh}</span>
+      <span class="flight-id">${iata}</span>
+      <span class="flight-date">${date}</span>
+      <span class="${sc}" style="font-size:9px">◆ ${zh}</span>
     </div>`;
   }).join("");
 }
 
-// 设置默认日期为今天
 document.getElementById("flight_date").value = new Date().toISOString().slice(0, 10);
 loadMonitored();
 setInterval(loadMonitored, 30000);

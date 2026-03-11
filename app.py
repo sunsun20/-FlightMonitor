@@ -26,19 +26,37 @@ def query_flight(flight_iata, flight_date):
         flights = data.get("data", [])
         # 按日期过滤
         matched = [f for f in flights if f.get("flight_date", "") == flight_date]
-        flight = matched[0] if matched else (flights[0] if flights else None)
+        if not matched:
+            return {"error": f"未找到 {flight_date} 的航班数据，该日期可能还未进入系统（通常起飞前 1-2 天才会有数据）"}
+        flight = matched[0]
         if not flight:
             return None
+        dep = flight.get("departure", {})
+        arr = flight.get("arrival", {})
         return {
             "flight_iata": flight_iata.upper(),
+            "flight_number": flight.get("flight", {}).get("number", ""),
             "date": flight.get("flight_date", flight_date),
             "status": flight.get("flight_status", "unknown"),
-            "departure_airport": flight.get("departure", {}).get("airport", ""),
-            "departure_scheduled": flight.get("departure", {}).get("scheduled", ""),
-            "departure_delay": flight.get("departure", {}).get("delay"),
-            "arrival_airport": flight.get("arrival", {}).get("airport", ""),
-            "arrival_scheduled": flight.get("arrival", {}).get("scheduled", ""),
             "airline": flight.get("airline", {}).get("name", ""),
+            "aircraft": flight.get("aircraft", {}).get("registration", ""),
+            # 出发
+            "departure_airport": dep.get("airport", ""),
+            "departure_iata": dep.get("iata", ""),
+            "departure_terminal": dep.get("terminal", ""),
+            "departure_gate": dep.get("gate", ""),
+            "departure_scheduled": dep.get("scheduled", ""),
+            "departure_estimated": dep.get("estimated", ""),
+            "departure_actual": dep.get("actual", ""),
+            "departure_delay": dep.get("delay"),
+            # 到达
+            "arrival_airport": arr.get("airport", ""),
+            "arrival_iata": arr.get("iata", ""),
+            "arrival_terminal": arr.get("terminal", ""),
+            "arrival_gate": arr.get("gate", ""),
+            "arrival_scheduled": arr.get("scheduled", ""),
+            "arrival_estimated": arr.get("estimated", ""),
+            "arrival_baggage": arr.get("baggage", ""),
         }
     except Exception as e:
         return {"error": str(e)}

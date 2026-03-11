@@ -9,45 +9,56 @@
 ```
 FlightMonitor/
 ├── app.py              # 后端主程序
-├── config.py           # 配置文件（API Key、Telegram 等）
+├── config.py           # 配置文件（API Key、Telegram 等，不上传 GitHub）
+├── config.example.py   # 配置模板（上传 GitHub 用）
 ├── requirements.txt    # Python 依赖
 ├── templates/
-│   └── index.html      # 前端页面
+│   └── index.html      # 前端页面（NES.css 像素风格）
 └── venv/               # Python 虚拟环境（不需要动）
 ```
 
 ---
 
-## 启动方法
+## 部署方式（Azure VM + Tailscale，推荐）
 
-### 第一次使用
+### 已部署位置
 
-打开终端，进入项目目录：
+- **VM**：`vm-talos-cicd-01`（Southeast Asia）
+- **访问地址**：`http://100.69.178.121:5002`（Tailscale 内网）
+- **服务管理**：systemd，VM 重启后自动启动
+
+### 手机访问
+
+1. iPhone 安装 Tailscale App，登录同一账号
+2. 保持 Tailscale 开启
+3. Safari 打开 `http://100.69.178.121:5002`
+
+### VM 上管理服务
 
 ```bash
-cd ~/Downloads/自创app/FlightMonitor
+# 查看状态
+sudo systemctl status flightmonitor
+
+# 停止服务
+sudo systemctl stop flightmonitor
+
+# 启动服务
+sudo systemctl start flightmonitor
+
+# 永久禁用（重启后不自动启动）
+sudo systemctl disable flightmonitor
 ```
 
-安装依赖（只需要做一次）：
+---
 
-```bash
-venv/bin/pip install -r requirements.txt
-```
-
-### 每次启动
+## 本地开发启动
 
 ```bash
 cd ~/Downloads/自创app/FlightMonitor
 venv/bin/python app.py
 ```
 
-看到以下输出说明启动成功：
-
-```
- * Running on http://127.0.0.1:5002
-```
-
-然后打开浏览器访问：**http://localhost:5002**
+访问：**http://localhost:5002**
 
 ---
 
@@ -55,70 +66,35 @@ venv/bin/python app.py
 
 ### 查询航班状态
 
-1. 在「航班号」输入框填入航班号，例如 `EK306`
-2. 在「日期」选择你的出发日期
-3. 点击「**查询状态**」按钮
+1. 填入航班号，例如 `EK306`
+2. 选择出发日期
+3. 点击「**▶ 查询**」
 
-页面会显示：
-- 航班状态（正常 / 飞行中 / 已降落 / 已取消 / 延误）
-- 出发机场和计划起飞时间
-- 到达机场和计划到达时间
-- 延误分钟数（有延误时显示红色）
+显示信息包括：
+- 航班状态（计划中 / 飞行中 / 已降落 / 已取消 / 延误）
+- 出发机场、**航站楼**、登机口、计划/实际起飞时间
+- 到达机场、航站楼、登机口、计划/预计到达时间
+- 延误分钟数（红色显示）
+- 行李转盘（落地后）
 
-### 开始自动监控（推荐）
+### 开始自动监控
 
-1. 填好航班号和日期后，点击「**开始监控**」
-2. 程序每 **10 分钟**自动检查一次航班状态
-3. 状态发生变化时（比如从"正常"变成"取消"），**Telegram 会立即发消息通知你**
+1. 填好航班号和日期，点击「**◉ 开始监控**」
+2. 每 **10 分钟**自动检查一次
+3. 状态变化时（取消/延误）**Telegram 立即通知**
 
-> 注意：监控依赖程序持续运行，关闭终端后监控会停止。
-
----
-
-## 关闭程序
-
-### 方法一：在终端直接按
-
-```
-Ctrl + C
-```
-
-### 方法二：如果终端已经关了，找到进程手动杀掉
-
-查找程序进程：
-
-```bash
-ps aux | grep app.py
-```
-
-会看到类似这样的输出：
-
-```
-hugo  12345  ...  venv/bin/python app.py
-```
-
-记下前面的数字（进程 ID），然后：
-
-```bash
-kill 12345
-```
-
-### 方法三：一键关闭
-
-```bash
-pkill -f "venv/bin/python app.py"
-```
+> 航班数据通常在起飞前 1-2 天进入系统，太早查询会显示"未找到数据"，属正常现象。
 
 ---
 
 ## 配置说明
 
-配置文件在 `config.py`，如需修改：
+配置文件 `config.py`（不提交到 GitHub，复制 `config.example.py` 修改）：
 
 | 参数 | 说明 |
 |------|------|
-| `AVIATIONSTACK_API_KEY` | 航班数据 API Key（来自 aviationstack.com） |
-| `TELEGRAM_BOT_TOKEN` | Telegram 机器人 Token |
+| `AVIATIONSTACK_API_KEY` | 航班数据 API Key（aviationstack.com 免费注册） |
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot Token（从 @BotFather 获取） |
 | `TELEGRAM_CHAT_ID` | 你的 Telegram 用户 ID |
 | `CHECK_INTERVAL_MINUTES` | 监控检查间隔，默认 10 分钟 |
 
@@ -140,18 +116,19 @@ pkill -f "venv/bin/python app.py"
 ## 常见问题
 
 **Q：查询显示"未找到该航班"？**
-A：航班数据通常在起飞前 1-2 天才会出现在系统里，太早查可能没有数据。
+A：航班数据通常起飞前 1-2 天才入库，提前太多查不到是正常的。
 
 **Q：Telegram 没有收到通知？**
-A：确认已经给 `@hugo_flight_bot` 发过消息（必须先发消息，Bot 才能给你发通知）。
+A：确认已经给 Bot 发过消息（必须先主动发消息，Bot 才能给你推送）。
 
-**Q：关掉终端后监控停了怎么办？**
-A：重新启动程序，再点一次「开始监控」即可。后续可以部署到 Azure VM 上实现 24 小时运行。
+**Q：手机访问不了？**
+A：确认 iPhone 上 Tailscale 已开启并登录同一账号。
 
 ---
 
 ## 后续计划
 
-- [ ] 部署到 Azure VM，实现 7×24 小时监控
+- [x] 部署到 Azure VM，实现 7×24 小时监控
+- [x] Tailscale 内网访问，无需公网 IP
 - [ ] 支持同时监控多个航班
 - [ ] 增加历史记录功能
