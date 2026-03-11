@@ -105,8 +105,83 @@ def monitor_loop():
         time.sleep(CHECK_INTERVAL_MINUTES * 60)
 
 
+def format_flight_msg(result):
+    """把航班数据格式化成 Telegram 消息"""
+    zh = STATUS_ZH.get(result.get("status", ""), result.get("status", ""))
+    dep_time = result.get("departure_scheduled", "")[:16].replace("T", " ")
+    arr_time = result.get("arrival_scheduled", "")[:16].replace("T", " ")
+    terminal = f"T{result['departure_terminal']}" if result.get("departure_terminal") else "-"
+    gate = result.get("departure_gate") or "待定"
+    delay = f"\n⏰ 延误：{result['departure_delay']} 分钟" if result.get("departure_delay") else ""
+    return (
+        f"✈️ {result.get('flight_iata')}  {result.get('airline', '')}\n"
+        f"状态：{zh}\n"
+        f"─────────────\n"
+        f"出发：{result.get('departure_airport')} ({result.get('departure_iata', '')})\n"
+        f"航站楼：{terminal}  登机口：{gate}\n"
+        f"起飞：{dep_time}{delay}\n"
+        f"─────────────\n"
+        f"到达：{result.get('arrival_airport')} ({result.get('arrival_iata', '')})\n"
+        f"到达：{arr_time}"
+    )
+
+
+def telegram_bot_loop():
+    """Telegram Bot 轮询，接收用户消息并回复航班查询"""
+    offset = 0
+    today = datetime.now().strftime("%Y-%m-%d")
+    while True:
+        try:
+            resp = requests.get(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates",
+                params={"offset": offset, "timeout": 30},
+                timeout=35
+            )
+            updates = resp.json().get("result", [])
+            for update in updates:
+                offset = update["update_id"] + 1
+                msg = update.get("message", {})
+                chat_id = msg.get("chat", {}).get("id")
+                text = msg.get("text", "").strip()
+                if not text or not chat_id:
+                    continue
+
+                # 解析指令：EK306 或 EK306 2026-03-13
+                parts = text.upper().split()
+                flight_iata = parts[0] if parts else ""
+                flight_date = parts[1] if len(parts) > 1 else today
+
+                # 简单校验航班号格式
+                if len(flight_iata) < 3 or not any(c.isdigit() for c in flight_iata):
+                    requests.post(
+                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                        json={"chat_id": chat_id, "text": "发送格式：\nEK306\n或\nEK306 2026-03-13"},
+                        timeout=10
+                    )
+                    continue
+
+                result = query_flight(flight_iata, flight_date)
+                if not result:
+                    reply = f"❌ 未找到 {flight_iata} {flight_date} 的数据"
+                elif "error" in result:
+                    reply = f"❌ {result['error']}"
+                else:
+                    reply = format_flight_msg(result)
+
+                requests.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                    json={"chat_id": chat_id, "text": reply},
+                    timeout=10
+                )
+        except Exception as e:
+            print(f"Bot 轮询错误: {e}")
+            time.sleep(5)
+
+
 # 启动后台监控线程
 threading.Thread(target=monitor_loop, daemon=True).start()
+# 启动 Telegram Bot 轮询线程
+threading.Thread(target=telegram_bot_loop, daemon=True).start()
 
 
 @app.route("/")
