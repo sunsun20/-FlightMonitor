@@ -1,9 +1,10 @@
 import requests
 import threading
 import time
+import base64
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
-from config import AVIATIONSTACK_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, CHECK_INTERVAL_MINUTES
+from config import AVIATIONSTACK_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, CHECK_INTERVAL_MINUTES, DEEPSEEK_API_KEY
 
 app = Flask(__name__)
 
@@ -108,21 +109,83 @@ def monitor_loop():
 def format_flight_msg(result):
     """把航班数据格式化成 Telegram 消息"""
     zh = STATUS_ZH.get(result.get("status", ""), result.get("status", ""))
-    dep_time = result.get("departure_scheduled", "")[:16].replace("T", " ")
-    arr_time = result.get("arrival_scheduled", "")[:16].replace("T", " ")
-    terminal = f"T{result['departure_terminal']}" if result.get("departure_terminal") else "-"
-    gate = result.get("departure_gate") or "待定"
-    delay = f"\n⏰ 延误：{result['departure_delay']} 分钟" if result.get("departure_delay") else ""
-    return (
-        f"✈️ {result.get('flight_iata')}  {result.get('airline', '')}\n"
-        f"状态：{zh}\n"
-        f"─────────────\n"
-        f"出发：{result.get('departure_airport')} ({result.get('departure_iata', '')})\n"
-        f"航站楼：{terminal}  登机口：{gate}\n"
-        f"起飞：{dep_time}{delay}\n"
-        f"─────────────\n"
-        f"到达：{result.get('arrival_airport')} ({result.get('arrival_iata', '')})\n"
-        f"到达：{arr_time}"
+
+    dep_terminal = f"T{result['departure_terminal']}" if result.get("departure_terminal") else "-"
+    dep_gate     = result.get("departure_gate") or "待定"
+    dep_sched    = result.get("departure_scheduled", "")[:16].replace("T", " ")
+    dep_est      = result.get("departure_estimated", "")[:16].replace("T", " ")
+    dep_actual   = result.get("departure_actual", "")[:16].replace("T", " ")
+    dep_delay    = result.get("departure_delay")
+
+    arr_terminal = f"T{result['arrival_terminal']}" if result.get("arrival_terminal") else "-"
+    arr_gate     = result.get("arrival_gate") or "待定"
+    arr_sched    = result.get("arrival_scheduled", "")[:16].replace("T", " ")
+    arr_est      = result.get("arrival_estimated", "")[:16].replace("T", " ")
+    arr_baggage  = result.get("arrival_baggage") or "-"
+
+    lines = [
+        f"✈️ {result.get('flight_iata')}  {result.get('airline', '')}",
+        f"状态：{zh}",
+        f"─────────────",
+        f"【出发】{result.get('departure_airport')} ({result.get('departure_iata', '')})",
+        f"航站楼：{dep_terminal}  登机口：{dep_gate}",
+        f"计划起飞：{dep_sched}",
+    ]
+    if dep_est and dep_est != dep_sched:
+        lines.append(f"预计起飞：{dep_est}")
+    if dep_actual:
+        lines.append(f"实际起飞：{dep_actual}")
+    if dep_delay:
+        lines.append(f"⏰ 延误：{dep_delay} 分钟")
+    lines.append("─────────────")
+    lines += [
+        f"【到达】{result.get('arrival_airport')} ({result.get('arrival_iata', '')})",
+        f"航站楼：{arr_terminal}  登机口：{arr_gate}",
+        f"计划到达：{arr_sched}",
+    ]
+    if arr_est and arr_est != arr_sched:
+        lines.append(f"预计到达：{arr_est}")
+    lines.append(f"🧳 行李转盘：{arr_baggage}")
+
+    return "\n".join(lines)
+
+
+def extract_flight_from_image(image_bytes):
+    """用 DeepSeek Vision 识别截图中的航班号和日期"""
+    b64 = base64.b64encode(image_bytes).decode()
+    resp = requests.post(
+        "https://api.deepseek.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"},
+        json={
+            "model": "deepseek-chat",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                    {"type": "text", "text": (
+                        "这是一张机票订单或航班信息截图。"
+                        "请提取航班号和出发日期，只返回 JSON 格式，例如：{\"flight\": \"EK306\", \"date\": \"2026-03-13\"}"
+                        "如果有多个航班，返回第一个。如果识别不到，返回 {\"flight\": null, \"date\": null}"
+                    )}
+                ]
+            }],
+            "max_tokens": 100
+        },
+        timeout=30
+    )
+    import json, re
+    content = resp.json()["choices"][0]["message"]["content"]
+    match = re.search(r'\{.*?\}', content, re.DOTALL)
+    if match:
+        return json.loads(match.group())
+    return {"flight": None, "date": None}
+
+
+def send_msg(chat_id, text):
+    requests.post(
+        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+        json={"chat_id": chat_id, "text": text},
+        timeout=10
     )
 
 
@@ -130,6 +193,9 @@ def telegram_bot_loop():
     """Telegram Bot 轮询，接收用户消息并回复航班查询"""
     offset = 0
     today = datetime.now().strftime("%Y-%m-%d")
+    # 等待确认的状态：chat_id -> {"flight": "EK306", "date": "2026-03-13"}
+    pending = {}
+
     while True:
         try:
             resp = requests.get(
@@ -142,22 +208,65 @@ def telegram_bot_loop():
                 offset = update["update_id"] + 1
                 msg = update.get("message", {})
                 chat_id = msg.get("chat", {}).get("id")
-                text = msg.get("text", "").strip()
-                if not text or not chat_id:
+                if not chat_id:
                     continue
 
-                # 解析指令：EK306 或 EK306 2026-03-13
+                # 处理图片
+                if msg.get("photo"):
+                    send_msg(chat_id, "🔍 识别中，请稍等...")
+                    try:
+                        # 取最高清的图片
+                        file_id = msg["photo"][-1]["file_id"]
+                        file_info = requests.get(
+                            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile",
+                            params={"file_id": file_id}, timeout=10
+                        ).json()
+                        file_path = file_info["result"]["file_path"]
+                        image_bytes = requests.get(
+                            f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}",
+                            timeout=15
+                        ).content
+                        parsed = extract_flight_from_image(image_bytes)
+                        flight = parsed.get("flight")
+                        date = parsed.get("date") or today
+                        if flight:
+                            pending[chat_id] = {"flight": flight, "date": date}
+                            send_msg(chat_id, f"识别到：✈️ {flight}  📅 {date}\n\n发送「确认」查询，或发送「取消」")
+                        else:
+                            send_msg(chat_id, "❌ 未能识别到航班信息，请直接发送航班号，例如：EK306")
+                    except Exception as e:
+                        send_msg(chat_id, f"❌ 识别失败：{e}")
+                    continue
+
+                text = msg.get("text", "").strip()
+                if not text:
+                    continue
+
+                # 处理确认/取消
+                if chat_id in pending:
+                    if text in ("确认", "是", "yes", "ok", "OK", "Yes"):
+                        p = pending.pop(chat_id)
+                        result = query_flight(p["flight"], p["date"])
+                        if not result:
+                            reply = f"❌ 未找到数据"
+                        elif "error" in result:
+                            reply = f"❌ {result['error']}"
+                        else:
+                            reply = format_flight_msg(result)
+                        send_msg(chat_id, reply)
+                        continue
+                    elif text in ("取消", "no", "No"):
+                        pending.pop(chat_id)
+                        send_msg(chat_id, "已取消")
+                        continue
+
+                # 文字查询：EK306 或 EK306 2026-03-13
                 parts = text.upper().split()
                 flight_iata = parts[0] if parts else ""
                 flight_date = parts[1] if len(parts) > 1 else today
 
-                # 简单校验航班号格式
                 if len(flight_iata) < 3 or not any(c.isdigit() for c in flight_iata):
-                    requests.post(
-                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                        json={"chat_id": chat_id, "text": "发送格式：\nEK306\n或\nEK306 2026-03-13"},
-                        timeout=10
-                    )
+                    send_msg(chat_id, "发送格式：\nEK306\n或\nEK306 2026-03-13\n\n也可以直接发截图 📸")
                     continue
 
                 result = query_flight(flight_iata, flight_date)
@@ -167,12 +276,8 @@ def telegram_bot_loop():
                     reply = f"❌ {result['error']}"
                 else:
                     reply = format_flight_msg(result)
+                send_msg(chat_id, reply)
 
-                requests.post(
-                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                    json={"chat_id": chat_id, "text": reply},
-                    timeout=10
-                )
         except Exception as e:
             print(f"Bot 轮询错误: {e}")
             time.sleep(5)
